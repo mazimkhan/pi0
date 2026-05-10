@@ -1,0 +1,15 @@
+[Unit]
+Description=My loop Script
+After=multi-user.target
+
+[Service]
+# 'simple' or 'idle' ensures it runs after other services
+Type=idle
+ExecStart=/home/pi/autonomous.sh
+# This line acts like 'respawn' in the old inittab
+Restart=always
+User=pi
+
+[Install]
+WantedBy=multi-user.target
+
