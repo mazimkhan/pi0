@@ -23,7 +23,7 @@ try:
         front = line1[0]
         line1 = line1[1:] + front
         front = line2[0]
-        line2 = line2[2:] + front
+        line2 = line2[1:] + front
 except KeyboardInterrupt:
     # Clear the screen before exiting
     lcd.clear()
