@@ -18,7 +18,7 @@ try:
         lcd.text(line1, 1, "left")  # Line 1
         lcd.text(line2, 2, 'left')
         
-        sleep(0.10)
+        sleep(0.30)
         
         front = line1[0]
         line1 = line1[1:] + front
