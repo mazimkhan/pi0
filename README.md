@@ -36,7 +36,7 @@ and update password line to (encrypted text for "raspberry")
  - On first boot the serial port may go and come back couple of times and may not respond in the serial app like putty. Please have patience
 
 ## Setting up the WiFi
-
+Run `sudo nmtui` and follow textual UI for selecting the network and entring password. Test connection by pinging `ping www.google.com`.
 
 ## Blinky/LED/Output test
 Connect a LED with 220ohm resistor to PIN 3 and to ground. Create a Python file with following code
