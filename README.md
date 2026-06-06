@@ -60,6 +60,23 @@ python3 blinky.py
 This should turn the LED On and Off at 1 second interval.
 
 ## Button/Input test
+Reading button input
+
+```py
+import time
+from gpiozero import InputDevice
+
+inp = InputDevice(14)
+
+while True:
+    if inp.value:
+        print("Button Pressed")
+    else:
+        print("Button Off")
+    time.sleep(0.25)
+```
+
+## Button/Input test
 Following command demonstrates interfacing an input for example a button
 
 ```py
@@ -70,7 +87,7 @@ out = OutputDevice(3)
 inp = InputDevice(14)
 
 while True:
-    if i.value:
+    if inp.value:
         out.on()
     else:
         out.off()
