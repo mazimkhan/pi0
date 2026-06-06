@@ -38,7 +38,7 @@ and update password line to (encrypted text for "raspberry")
 ## Setting up the WiFi
 
 
-## Blinky test
+## Blinky/LED/Output test
 Connect a LED with 220ohm resistor to PIN 3 and to ground. Create a Python file with following code
 ```Python
 import time
@@ -58,3 +58,21 @@ Copy file on pi and run with following command
 python3 blinky.py
 ```
 This should turn the LED On and Off at 1 second interval.
+
+## Button/Input test
+Following command demonstrates interfacing an input for example a button
+
+```py
+import time
+from gpiozero import OutputDevice, InputDevice
+
+out = OutputDevice(3)
+inp = InputDevice(14)
+
+while True:
+    if i.value:
+        out.on()
+    else:
+        out.off()
+    time.sleep(0.25)
+```
