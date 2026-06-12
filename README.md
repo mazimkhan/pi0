@@ -93,3 +93,27 @@ while True:
         out.off()
     time.sleep(0.25)
 ```
+
+## Toggle LED
+```python
+import time
+from gpiozero import OutputDevice, InputDevice
+
+out = OutputDevice(3)
+inp = InputDevice(14)
+
+# Toggle variable that flips value every time botton in pressed 
+toggle = False
+
+while True:
+    # Toggle if button is pressed
+    if inp.value:
+        toggle != toggle
+
+    # Turn On LED if toggle is True, else turn it Off
+    if toggle:
+        out.on()
+    else:
+        out.off()
+    time.sleep(0.25)
+```
