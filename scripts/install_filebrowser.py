@@ -7,8 +7,6 @@ import json
 # =====================================================================
 # CONFIGURATION SETTINGS
 # =====================================================================
-# Set your desired static password here. 
-# It must be at least 1 character long (8+ recommended for security).
 STATIC_PASSWORD = "MySecurePassword123"
 # =====================================================================
 
@@ -28,7 +26,7 @@ def main():
         sys.exit(1)
 
     if not STATIC_PASSWORD:
-        print("[!] Error: STATIC_PASSWORD cannot be empty. Please edit the script and set a password.")
+        print("[!] Error: STATIC_PASSWORD cannot be empty.")
         sys.exit(1)
 
     print("=========================================")
@@ -45,6 +43,7 @@ def main():
     SSL_DIR = f"{CONFIG_DIR}/ssl"
     CERT_PATH = f"{SSL_DIR}/filebrowser.crt"
     KEY_PATH = f"{SSL_DIR}/filebrowser.key"
+    BINARY_PATH = f"{INSTALL_DIR}/filebrowser"
 
     # 2. Setup System User & Isolated Storage (Idempotent)
     run_command("id -u filebrowser &>/dev/null || useradd -r -s /bin/false filebrowser", "Checking/creating unprivileged system user")
@@ -57,48 +56,54 @@ def main():
     else:
         print("[+] SSL certificate and key already exist. Skipping generation.")
     
-    # 4. Download and Extract Binary (Idempotent check)
-    if not os.path.exists(f"{INSTALL_DIR}/filebrowser"):
-        print("[*] Fetching latest File Browser release info...")
-        try:
+    # 4. Download and Extract Binary (With network failure safety fallback)
+    try:
+        if not os.path.exists(BINARY_PATH):
+            print("[*] Attempting to reach GitHub for the latest File Browser release...")
             api_url = "https://github.com"
             req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req) as response:
+            with urllib.request.urlopen(req, timeout=5) as response:
                 latest_version = json.loads(response.read().decode())['tag_name']
-        except Exception:
-            latest_version = "v2.31.2"
 
-        download_url = f"https://github.com/filebrowser/filebrowser/releases/download/{latest_version}/{ARCH}-filebrowser.tar.gz"
+            download_url = f"https://github.com{latest_version}/{ARCH}-filebrowser.tar.gz"
+            tar_file = "/tmp/filebrowser.tar.gz"
+            
+            print(f"[*] Downloading {latest_version} binary from GitHub...")
+            urllib.request.urlretrieve(download_url, tar_file)
+            run_command(f"tar -xzf {tar_file} -C {INSTALL_DIR} filebrowser", "Extracting binary")
+            run_command(f"rm {tar_file}", "Cleaning up download files")
+            print("[+] File Browser binary successfully downloaded.")
+        else:
+            print("[+] File Browser binary already exists locally.")
 
-        tar_file = "/tmp/filebrowser.tar.gz"
-        
-        print(f"[*] Downloading {latest_version} binary...")
-        urllib.request.urlretrieve(download_url, tar_file)
-        run_command(f"tar -xzf {tar_file} -C {INSTALL_DIR} filebrowser", "Extracting binary")
-        run_command(f"rm {tar_file}", "Cleaning up download files")
-    else:
-        print("[+] File Browser binary already installed. Skipping download.")
+    except Exception as e:
+        print("\n[!] WARNING: Network error or DNS resolution failed while checking GitHub.")
+        if os.path.exists(BINARY_PATH):
+            print("[+] OFFLINE FALLBACK: Existing 'filebrowser' binary found locally. Proceeding with configuration.")
+        else:
+            print("[!] FATAL ERROR: No internet connection and no existing binary found to install.")
+            sys.exit(1)
 
-    # 5. Initialize & Configure Database (Idempotent)
+    # 5. Initialize & Configure Database (Using Corrected v2 CLI Architecture)
     if not os.path.exists(DATABASE_PATH):
-        run_command(f"{INSTALL_DIR}/filebrowser db database {DATABASE_PATH}", "Initializing database context")
+        # Bootstrap config settings directly into a new database file
+        run_command(f"{BINARY_PATH} config init --database={DATABASE_PATH}", "Initializing database context")
         
-        # Base config binding to all network interfaces on HTTPS port 8443
-        config_cmd = f"{INSTALL_DIR}/filebrowser db config set --address 0.0.0.0 --port 8443 --cert {CERT_PATH} --key {KEY_PATH} --root {SHARED_DIR} --database={DATABASE_PATH}"
+        # Enforce binding settings directly using updated "config set" parameters
+        config_cmd = f"{BINARY_PATH} config set --address 0.0.0.0 --port 8443 --cert {CERT_PATH} --key {KEY_PATH} --root {SHARED_DIR} --database={DATABASE_PATH}"
         run_command(config_cmd, "Enabling SSL/TLS certificates inside config")
         
-        # Add admin with the static password defined above
-        user_cmd = f"{INSTALL_DIR}/filebrowser db users add admin {STATIC_PASSWORD} --perm.admin=true --database={DATABASE_PATH}"
+        # Add the default administrator using updated "users add" structural syntax
+        user_cmd = f"{BINARY_PATH} users add admin {STATIC_PASSWORD} --perm.admin=true --database={DATABASE_PATH}"
         run_command(user_cmd, "Creating admin account with static password")
     else:
         print("[+] Existing database found.")
-        # Check if the admin user exists in the current DB, add if missing
-        check_admin = subprocess.run(f"{INSTALL_DIR}/filebrowser db users find admin --database={DATABASE_PATH}", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        check_admin = subprocess.run(f"{BINARY_PATH} users find admin --database={DATABASE_PATH}", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if check_admin.returncode != 0:
-            user_cmd = f"{INSTALL_DIR}/filebrowser db users add admin {STATIC_PASSWORD} --perm.admin=true --database={DATABASE_PATH}"
+            user_cmd = f"{BINARY_PATH} users add admin {STATIC_PASSWORD} --perm.admin=true --database={DATABASE_PATH}"
             run_command(user_cmd, "Admin user missing. Re-creating admin account with static password")
         else:
-            print("[+] Admin user already exists. Preserving current account.")
+            print("[+] Admin user already exists. Preserving current account settings.")
 
     # 6. Apply Correct Ownership Permissions
     run_command(f"chown -R filebrowser:filebrowser {CONFIG_DIR} {SHARED_DIR}", "Enforcing secure ownership permissions")
@@ -112,7 +117,7 @@ After=network.target
 [Service]
 User=filebrowser
 Group=filebrowser
-ExecStart={INSTALL_DIR}/filebrowser -d {DATABASE_PATH}
+ExecStart={BINARY_PATH} -d {DATABASE_PATH}
 Restart=on-failure
 
 # Kernel Security Hardening
@@ -134,15 +139,16 @@ WantedBy=multi-user.target
     run_command("systemctl restart filebrowser", "Restarting File Browser HTTPS service to apply configs")
 
     # 9. Output Details
-    ip_address = run_command("hostname -I | awk '{print $1}'", "Retrieving network IP address")
+    try:
+        ip_address = run_command("hostname -I | awk '{print $1}'", "Retrieving network IP address")
+    except Exception:
+        ip_address = "<your-pi-ip>"
+
     print("\n=========================================")
     print("[+] HTTPS Server Successfully Configured!")
     print(f"[+] Access URL: https://{ip_address}:8443")
     print("[+] Default Username: admin")
     print(f"[+] Static Password: {STATIC_PASSWORD}")
-    print("=========================================")
-    print("[NOTE] Because this uses a self-signed certificate, your browser will warn you ")
-    print("       with 'Your connection is not private'. Click 'Advanced' -> 'Proceed' to log in safely.")
     print("=========================================")
 
 if __name__ == "__main__":
