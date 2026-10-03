@@ -68,7 +68,8 @@ def main():
         except Exception:
             latest_version = "v2.31.2"
 
-        download_url = f"https://github.com{latest_version}/{ARCH}-filebrowser.tar.gz"
+        download_url = f"https://github.com/filebrowser/filebrowser/releases/download/{latest_version}/{ARCH}-filebrowser.tar.gz"
+
         tar_file = "/tmp/filebrowser.tar.gz"
         
         print(f"[*] Downloading {latest_version} binary...")
