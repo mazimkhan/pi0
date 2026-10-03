@@ -13,6 +13,7 @@ STATIC_PASSWORD = "MySecurePassword123"
 def run_command(command, description):
     print(f"[*] {description}...")
     try:
+        # We drop the shell pipeline to let Python securely run and capture system behaviors
         result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return result.stdout.decode().strip()
     except subprocess.CalledProcessError as e:
@@ -45,19 +46,25 @@ def main():
     KEY_PATH = f"{SSL_DIR}/filebrowser.key"
     BINARY_PATH = f"{INSTALL_DIR}/filebrowser"
 
-    # 2. Setup System User & Group (Fixed for explicit group safety)
-    run_command("getent group filebrowser &>/dev/null || groupadd -r filebrowser", "Checking/creating filebrowser system group")
-    run_command("id -u filebrowser &>/dev/null || useradd -r -g filebrowser -s /bin/false filebrowser", "Checking/creating unprivileged system user")
+    # 2. Setup System User & Group (Guaranteed matching structures)
+    # Checks if user exists. If not, creates user AND group cleanly via native system tools.
+    check_user = subprocess.run("id -u filebrowser", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if check_user.returncode != 0:
+        # -U explicitly tells the OS to create a group named 'filebrowser' with the user
+        run_command("useradd -r -U -s /bin/false filebrowser", "Creating unprivileged system user and matching group")
+    else:
+        print("[+] System user 'filebrowser' verified.")
+
     run_command(f"mkdir -p {CONFIG_DIR} {SHARED_DIR} {SSL_DIR}", "Ensuring configuration and storage directories exist")
 
-    # 3. Generate Self-Signed SSL/TLS Certificates (Idempotent)
+    # 3. Generate Self-Signed SSL/TLS Certificates
     if not os.path.exists(CERT_PATH) or not os.path.exists(KEY_PATH):
         ssl_cmd = f"openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout {KEY_PATH} -out {CERT_PATH} -subj '/CN=raspberrypi.local'"
         run_command(ssl_cmd, "Generating native self-signed SSL/TLS certificate")
     else:
         print("[+] SSL certificate and key already exist. Skipping generation.")
     
-    # 4. Download and Extract Binary (With network failure safety fallback)
+    # 4. Download and Extract Binary Fallback
     try:
         if not os.path.exists(BINARY_PATH):
             print("[*] Attempting to reach GitHub for the latest File Browser release...")
@@ -77,15 +84,15 @@ def main():
         else:
             print("[+] File Browser binary already exists locally.")
 
-    except Exception as e:
+    except Exception:
         print("\n[!] WARNING: Network error or DNS resolution failed while checking GitHub.")
         if os.path.exists(BINARY_PATH):
-            print("[+] OFFLINE FALLBACK: Existing 'filebrowser' binary found locally. Proceeding with configuration.")
+            print("[+] OFFLINE FALLBACK: Existing 'filebrowser' binary found locally.")
         else:
             print("[!] FATAL ERROR: No internet connection and no existing binary found to install.")
             sys.exit(1)
 
-    # 5. Initialize & Configure Database (Using Corrected v2 CLI Architecture)
+    # 5. Initialize & Configure Database
     if not os.path.exists(DATABASE_PATH):
         run_command(f"{BINARY_PATH} config init --database={DATABASE_PATH}", "Initializing database context")
         config_cmd = f"{BINARY_PATH} config set --address 0.0.0.0 --port 8443 --cert {CERT_PATH} --key {KEY_PATH} --root {SHARED_DIR} --database={DATABASE_PATH}"
