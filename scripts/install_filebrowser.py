@@ -45,8 +45,9 @@ def main():
     KEY_PATH = f"{SSL_DIR}/filebrowser.key"
     BINARY_PATH = f"{INSTALL_DIR}/filebrowser"
 
-    # 2. Setup System User & Isolated Storage (Idempotent)
-    run_command("id -u filebrowser &>/dev/null || useradd -r -s /bin/false filebrowser", "Checking/creating unprivileged system user")
+    # 2. Setup System User & Group (Fixed for explicit group safety)
+    run_command("getent group filebrowser &>/dev/null || groupadd -r filebrowser", "Checking/creating filebrowser system group")
+    run_command("id -u filebrowser &>/dev/null || useradd -r -g filebrowser -s /bin/false filebrowser", "Checking/creating unprivileged system user")
     run_command(f"mkdir -p {CONFIG_DIR} {SHARED_DIR} {SSL_DIR}", "Ensuring configuration and storage directories exist")
 
     # 3. Generate Self-Signed SSL/TLS Certificates (Idempotent)
@@ -86,14 +87,9 @@ def main():
 
     # 5. Initialize & Configure Database (Using Corrected v2 CLI Architecture)
     if not os.path.exists(DATABASE_PATH):
-        # Bootstrap config settings directly into a new database file
         run_command(f"{BINARY_PATH} config init --database={DATABASE_PATH}", "Initializing database context")
-        
-        # Enforce binding settings directly using updated "config set" parameters
         config_cmd = f"{BINARY_PATH} config set --address 0.0.0.0 --port 8443 --cert {CERT_PATH} --key {KEY_PATH} --root {SHARED_DIR} --database={DATABASE_PATH}"
         run_command(config_cmd, "Enabling SSL/TLS certificates inside config")
-        
-        # Add the default administrator using updated "users add" structural syntax
         user_cmd = f"{BINARY_PATH} users add admin {STATIC_PASSWORD} --perm.admin=true --database={DATABASE_PATH}"
         run_command(user_cmd, "Creating admin account with static password")
     else:
